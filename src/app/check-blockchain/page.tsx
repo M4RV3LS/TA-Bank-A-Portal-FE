@@ -1,14 +1,13 @@
-// bank-portal/bank-a/frontend/src/app/check-blockchain/page.tsx
 "use client";
 
 import React, { useState, useRef } from "react";
 import { Scanner, type IDetectedBarcode } from "@yudiel/react-qr-scanner";
 import jsQR from "jsqr";
-// Make sure to import your Navbar
+import Navbar from "@/components/Navbar";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-// --- Type definitions are unchanged ---
+// --- Type definitions ---
 interface Payload {
   client_id: number;
   customer_name: string;
@@ -18,7 +17,6 @@ interface Payload {
   home_bank_code: string;
 }
 
-// ✅ ADDED: Interface for the success state
 interface SuccessResult {
   requestId: number;
   customerName: string;
@@ -27,25 +25,23 @@ interface SuccessResult {
 export default function CreateRequestFromQRPage() {
   const [mode, setMode] = useState<"upload" | "scan">("upload");
   const [loading, setLoading] = useState(false);
-  const [successData, setSuccessData] = useState<SuccessResult | null>(null); // ✅ ADDED: State for the success screen
+  const [successData, setSuccessData] = useState<SuccessResult | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // The logic for these functions is correct and remains unchanged.
   const processPayload = async (payload: Payload) => {
     setLoading(true);
     try {
       const res = await fetch("http://localhost:4000/kyc-requests", {
+        // Points to Bank A backend
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       const json = await res.json();
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(json.error || "Failed to create KYC request.");
-      }
-
-      // ✅ MODIFIED: Set success data instead of just showing a toast and resetting
       setSuccessData({
         requestId: json.request_id,
         customerName: payload.customer_name,
@@ -59,36 +55,47 @@ export default function CreateRequestFromQRPage() {
     }
   };
 
-  // --- handleFile and handleScan logic remains the same ---
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
     setLoading(true);
-    const dataUrl = await new Promise<string>((res, rej) => {
-      const reader = new FileReader();
-      reader.onload = () => res(reader.result as string);
-      reader.onerror = rej;
-      reader.readAsDataURL(f);
-    });
+    const imageUrl = URL.createObjectURL(file);
     const img = new Image();
-    img.src = dataUrl;
+    img.src = imageUrl;
     img.onload = () => {
       const canvas = canvasRef.current;
-      if (!canvas) return;
-      // ... (canvas logic is the same)
-      const code = jsQR(/* ... */);
-      if (!code) {
-        /* ... */
+      if (!canvas) {
+        setLoading(false);
+        return;
       }
-      try {
-        const payload = JSON.parse(code.data) as Payload;
-        processPayload(payload);
-      } catch {
-        /* ... */
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        setLoading(false);
+        return;
       }
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+      const imageData = ctx.getImageData(0, 0, img.width, img.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      if (code && code.data) {
+        try {
+          const payload = JSON.parse(code.data) as Payload;
+          processPayload(payload);
+        } catch (err) {
+          toast.error("Invalid QR code data.");
+          setLoading(false);
+        }
+      } else {
+        toast.error("No QR code found in the image.");
+        setLoading(false);
+      }
+      URL.revokeObjectURL(imageUrl);
     };
     img.onerror = () => {
-      /* ... */
+      toast.error("Could not load image file.");
+      setLoading(false);
+      URL.revokeObjectURL(imageUrl);
     };
   };
 
@@ -99,12 +106,12 @@ export default function CreateRequestFromQRPage() {
     try {
       const payload = JSON.parse(text) as Payload;
       processPayload(payload);
-    } catch {
-      /* ... */
+    } catch (err) {
+      toast.error("Scanned QR code is not valid.");
+      setLoading(false);
     }
   };
 
-  // ✅ MODIFIED: The reset function now also clears the success data
   const resetState = () => {
     setSuccessData(null);
     setLoading(false);
@@ -114,12 +121,10 @@ export default function CreateRequestFromQRPage() {
   };
 
   return (
-    <div className="min-h-screen bg-orange-50">
+    <div className="min-h-screen bg-stone-50">
       <ToastContainer position="top-center" theme="colored" />
-
-      <main className="flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 animate-fade-in">
+      <main className="flex flex-col items-center p-4 sm:p-6 lg:p-8">
         <div className="w-full max-w-2xl bg-white p-6 sm:p-8 rounded-xl shadow-lg">
-          {/* ✅ MODIFIED: Conditionally render success screen or input UI */}
           {successData ? (
             <div className="text-center animate-fade-in">
               <div className="p-6 rounded-lg bg-green-50">
@@ -134,10 +139,9 @@ export default function CreateRequestFromQRPage() {
                   <strong>#{successData.requestId}</strong>.
                 </p>
               </div>
-
               <button
                 onClick={resetState}
-                className="mt-8 w-full sm:w-auto bg-amber-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-amber-700 shadow-sm transition-colors duration-150"
+                className="mt-8 w-full sm:w-auto bg-amber-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-amber-700 shadow-sm"
               >
                 Create Another Request
               </button>
@@ -148,10 +152,10 @@ export default function CreateRequestFromQRPage() {
                 Create New KYC Request via QR
               </h1>
               <p className="mt-2 text-stone-600 text-center">
-                Use a customers QR code to quickly populate a new KYC request.
+                Use a customer's QR code to quickly populate a new KYC request.
               </p>
 
-              {/* Mode Toggle */}
+              {/* ✅ FIX: Restored the mode-toggle buttons */}
               <div className="mt-6 p-1 bg-stone-100 rounded-lg flex space-x-1">
                 <button
                   onClick={() => setMode("upload")}
@@ -200,7 +204,9 @@ export default function CreateRequestFromQRPage() {
                   <div className="w-full max-w-sm mx-auto p-2 border-4 border-stone-200 rounded-lg shadow-inner">
                     <Scanner
                       onScan={handleScan}
-                      onError={() => toast.error("Camera error.")}
+                      onError={(e) =>
+                        toast.error(`Camera error: ${e?.message}`)
+                      }
                       constraints={{ facingMode: "environment" }}
                       styles={{ container: { width: "100%" } }}
                     />
